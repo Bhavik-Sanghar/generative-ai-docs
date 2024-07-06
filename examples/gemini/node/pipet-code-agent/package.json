@@ -20,6 +20,10 @@
       {
         "command": "pipet-code-agent.reviewCode",
         "title": "Pipet: Review the selected code."
+      },
+      {
+          "command": "pipet-code-agent.improveCode",
+          "title": "Pipet: Improve the selected code."
       }
     ],
     "configuration": [
