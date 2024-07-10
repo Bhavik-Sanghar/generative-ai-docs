@@ -1,21 +1,4 @@
-/**
- * Copyright 2023 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */ 
-
 import * as vscode from 'vscode';
-
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Provide instructions for the AI language model
@@ -49,62 +32,81 @@ are offset 1 from line numbers.
 ${CODE_LABEL}
 api_key = os.getenv("GOOGLE_API_KEY")
 ${COMMENT_LABEL}
-Attempt to load the API key from the environment.`;
+Attempt to load the API key from the environment.
+`;
 
+const commentPrefixes: { [key: string]: string } = {
+  'python': '# ',
+  'javascript': '// ',
+  'typescript': '// ',
+  'java': '// ',
+  'c': '// ',
+  'cpp': '// ',
+  'csharp': '// ',
+  'php': '// ',
+  'ruby': '# ',
+  'perl': '# ',
+  'shellscript': '# ',
+  'powershell': '# ',
+  'go': '// ',
+  'rust': '// ',
+  'kotlin': '// ',
+  // Add more languages and their comment syntax as needed
+};
 
 export async function generateComment() {
-    vscode.window.showInformationMessage('Generating comment...');
+  vscode.window.showInformationMessage('Generating comment...');
 
-    const modelName = vscode.workspace.getConfiguration().get<string>('google.gemini.textModel', 'models/gemini-1.0-pro-latest');
+  const modelName = vscode.workspace.getConfiguration().get<string>('google.gemini.textModel', 'models/gemini-1.0-pro-latest');
 
-    // Get API Key from local user configuration
-    const apiKey = vscode.workspace.getConfiguration().get<string>('google.gemini.apiKey');
-    if (!apiKey) {
-        vscode.window.showErrorMessage('API key not configured. Check your settings.');
-        return;
-    }
+  // Get API Key from local user configuration
+  const apiKey = vscode.workspace.getConfiguration().get<string>('google.gemini.apiKey');
+  if (!apiKey) {
+    vscode.window.showErrorMessage('API key not configured. Check your settings.');
+    return;
+  }
 
-    const genai = new GoogleGenerativeAI(apiKey);
-    const model = genai.getGenerativeModel({model: modelName});
+  const genai = new GoogleGenerativeAI(apiKey);
+  const model = genai.getGenerativeModel({model: modelName});
 
-    // Text selection
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-        console.debug('Abandon: no open text editor.');
-        return;
-    }
+  // Text selection
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    console.debug('Abandon: no open text editor.');
+    return;
+  }
 
-    const selection = editor.selection;
-    const selectedCode = editor.document.getText(selection);
+  const selection = editor.selection;
+  const selectedCode = editor.document.getText(selection);
 
-    // Build the full prompt using the template.
-    const fullPrompt = `${PROMPT}
+  // Determine the language of the active file
+  const languageId = editor.document.languageId;
+  const commentPrefix = commentPrefixes[languageId] || '// '; // Default to '//' if language not found
 
+  // Build the full prompt using the template.
+  const fullPrompt = `${PROMPT}
 ${CODE_LABEL}
 ${selectedCode}
 ${COMMENT_LABEL}
 `;
 
-    const result = await model.generateContent(fullPrompt);
-    const response = await result.response;
-    const comment = response.text();  
+  const result = await model.generateContent(fullPrompt);
+  const response = await result.response;
+  const comment = response.text();  
 
-    // Insert before selection.
-    editor.edit((editBuilder) => {
-        // TODO(you!): Support other comment styles.
-        const commentPrefix = '# ';
+  // Insert before selection.
+  editor.edit((editBuilder) => {
+    // Copy the indent from the first line of the selection.
+    const trimmed = selectedCode.trimStart();
+    const padding = selectedCode.substring(0, selectedCode.length - trimmed.length);
 
-        // Copy the indent from the first line of the selection.
-        const trimmed = selectedCode.trimStart();
-        const padding = selectedCode.substring(0, selectedCode.length - trimmed.length);
-
-        let pyComment = comment.split('\n').map((l: string) => `${padding}${commentPrefix}${l}`).join('\n');
-        if (pyComment.search(/\n$/) === -1) {
-            // Add a final newline if necessary.
-            pyComment += "\n";
-        }
-        let commentIntro = padding + commentPrefix + "Code comment: (generated)\n";
-        editBuilder.insert(selection.start, commentIntro);
-        editBuilder.insert(selection.start, pyComment);
-    });
+    let codeComment = comment.split('\n').map((l: string) => `${padding}${commentPrefix}${l}`).join('\n');
+    if (codeComment.search(/\n$/) === -1) {
+      // Add a final newline if necessary.
+      codeComment += "\n";
+    }
+    let commentIntro = padding + commentPrefix + "Code comment: (generated)\n";
+    editBuilder.insert(selection.start, commentIntro);
+    editBuilder.insert(selection.start, codeComment);
+  });
 }
